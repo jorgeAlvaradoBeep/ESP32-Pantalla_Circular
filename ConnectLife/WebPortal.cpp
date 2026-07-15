@@ -97,9 +97,10 @@ static const char CONFIG_HTML[] PROGMEM = R"HTML(
     <section class="panel"><h2>Logs</h2><pre id="logs"></pre></section>
   </main>
   <script>
-    const $=id=>document.getElementById(id);
-    async function refresh(){const s=await (await fetch('/api/state')).json();$('wifiSsid').value=s.config.wifiSsid||'';$('email').value=s.config.email||'';$('apiBaseUrl').value=s.config.apiBaseUrl||'';$('deviceId').value=s.config.deviceId||'';$('token').innerText='Token: '+(s.config.hasAccessToken?'guardado':'sin token')+' | Device ID: '+(s.config.deviceId||'--')+' | '+s.connectLife.status;$('logs').innerText=await (await fetch('/api/logs')).text();}
-    async function post(url,data={}){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();alert(j.message||'OK');await refresh();}
+    const $=id=>document.getElementById(id); let loaded=false; let dirty=false;
+    ['wifiSsid','wifiPassword','email','password','apiBaseUrl','deviceId'].forEach(id=>$(id).addEventListener('input',()=>dirty=true));
+    async function refresh(){const s=await (await fetch('/api/state')).json();if(!loaded&&!dirty){$('wifiSsid').value=s.config.wifiSsid||'';$('email').value=s.config.email||'';$('apiBaseUrl').value=s.config.apiBaseUrl||'';$('deviceId').value=s.config.deviceId||'';loaded=true;}$('token').innerText='Token: '+(s.config.hasAccessToken?'guardado':'sin token')+' | Device ID: '+(s.config.deviceId||'--')+' | '+s.connectLife.status;$('logs').innerText=await (await fetch('/api/logs')).text();}
+    async function post(url,data={}){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();alert(j.message||'OK');dirty=false;loaded=false;await refresh();}
     function save(){post('/api/config',{wifiSsid:$('wifiSsid').value,wifiPassword:$('wifiPassword').value,email:$('email').value,password:$('password').value,apiBaseUrl:$('apiBaseUrl').value,deviceId:$('deviceId').value})}
     function login(){post('/api/login')} function restart(){post('/api/restart')} refresh(); setInterval(refresh,5000);
   </script>
