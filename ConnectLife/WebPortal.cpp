@@ -134,6 +134,12 @@ void WebPortal::registerRoutes()
 {
   server.on("/", HTTP_GET, [this]() { sendIndex(); });
   server.on("/config", HTTP_GET, [this]() { sendConfig(); });
+  server.on("/generate_204", HTTP_GET, [this]() { redirectToConfig(); });
+  server.on("/gen_204", HTTP_GET, [this]() { redirectToConfig(); });
+  server.on("/hotspot-detect.html", HTTP_GET, [this]() { redirectToConfig(); });
+  server.on("/library/test/success.html", HTTP_GET, [this]() { redirectToConfig(); });
+  server.on("/ncsi.txt", HTTP_GET, [this]() { redirectToConfig(); });
+  server.on("/connecttest.txt", HTTP_GET, [this]() { redirectToConfig(); });
   server.on("/api/state", HTTP_GET, [this]() { sendState(); });
   server.on("/api/config", HTTP_POST, [this]() { saveConfig(); });
   server.on("/api/login", HTTP_POST, [this]() { loginConnectLife(); });
@@ -148,17 +154,29 @@ void WebPortal::registerRoutes()
   server.on("/api/ac/turbo", HTTP_POST, [this]() { handleAcCommand(); });
   server.on("/update", HTTP_GET, [this]() { sendOtaForm(); });
   server.on("/update", HTTP_POST, [this]() { finishOta(); }, [this]() { handleOtaUpload(); });
-  server.onNotFound([this]() { server.send(404, "text/plain", "Not found"); });
+  server.onNotFound([this]() { redirectToConfig(); });
 }
 
 void WebPortal::sendIndex()
 {
+  if (config.get().wifiSsid.length() == 0) {
+    sendConfig();
+    return;
+  }
   server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
 }
 
 void WebPortal::sendConfig()
 {
   server.send_P(200, "text/html; charset=utf-8", CONFIG_HTML);
+}
+
+void WebPortal::redirectToConfig()
+{
+  const String host = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  const String url = "http://" + host + "/config";
+  server.sendHeader("Location", url, true);
+  server.send(302, "text/plain; charset=utf-8", "Configuracion: " + url);
 }
 
 void WebPortal::sendState()

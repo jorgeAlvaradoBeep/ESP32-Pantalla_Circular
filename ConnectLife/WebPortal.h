@@ -30,6 +30,7 @@ private:
   void registerRoutes();
   void sendIndex();
   void sendConfig();
+  void redirectToConfig();
   void sendState();
   void saveConfig();
   void loginConnectLife();

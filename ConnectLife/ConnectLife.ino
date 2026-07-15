@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <DNSServer.h>
 #include <WiFi.h>
 #include <time.h>
 
@@ -17,10 +18,12 @@ Sensor sensor(DHT_PIN, DHT11, logger);
 ConnectLifeClient connectLife(appConfig, logger);
 WebPortal webPortal(appConfig, connectLife, sensor, logger);
 CircularDisplay display;
+DNSServer dnsServer;
 
 static unsigned long lastSensorReadMs = 0;
 static unsigned long lastConnectLifePollMs = 0;
 static unsigned long lastWiFiReconnectMs = 0;
+static bool setupPortalActive = false;
 
 static void startWiFi()
 {
@@ -53,7 +56,13 @@ static void startWiFi()
   }
 
   WiFi.mode(WIFI_AP_STA);
+  const IPAddress apIp(192, 168, 4, 1);
+  const IPAddress gateway(192, 168, 4, 1);
+  const IPAddress subnet(255, 255, 255, 0);
+  WiFi.softAPConfig(apIp, gateway, subnet);
   WiFi.softAP(DEFAULT_AP_SSID, DEFAULT_AP_PASSWORD);
+  dnsServer.start(53, "*", apIp);
+  setupPortalActive = true;
   logger.warn(String("WiFi not configured or unavailable. Setup AP: ") + DEFAULT_AP_SSID);
   logger.info("Setup AP IP: " + WiFi.softAPIP().toString());
   display.showSetupPortal(WiFi.softAPIP(), DEFAULT_AP_SSID);
@@ -95,11 +104,16 @@ void setup()
 
   connectLife.begin();
   webPortal.begin();
-  display.showConnectLifeStatus(connectLife.statusText(), connectLife.hasSession());
+  if (!setupPortalActive || appConfig.get().wifiSsid.length() > 0) {
+    display.showConnectLifeStatus(connectLife.statusText(), connectLife.hasSession());
+  }
 }
 
 void loop()
 {
+  if (setupPortalActive) {
+    dnsServer.processNextRequest();
+  }
   webPortal.handleClient();
   keepWiFiAlive();
 
@@ -108,10 +122,12 @@ void loop()
   if (now - lastSensorReadMs >= SENSOR_READ_INTERVAL_MS) {
     lastSensorReadMs = now;
     sensor.update();
-    const SensorReading reading = sensor.getReading();
-    const AcState ac = connectLife.getState();
-    const IPAddress ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP();
-    display.showReady(ip, reading.temperatureC, ac.targetTemperature, ac.mode);
+    if (!setupPortalActive || appConfig.get().wifiSsid.length() > 0) {
+      const SensorReading reading = sensor.getReading();
+      const AcState ac = connectLife.getState();
+      const IPAddress ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP();
+      display.showReady(ip, reading.temperatureC, ac.targetTemperature, ac.mode);
+    }
   }
 
   if (WiFi.status() == WL_CONNECTED && now - lastConnectLifePollMs >= CONNECTLIFE_POLL_INTERVAL_MS) {
