@@ -261,9 +261,9 @@ String ConnectLifeClient::statusText() const
     return "Error: " + state.lastError;
   }
   if (!state.authenticated) {
-    return "Not authenticated";
+    return "Sin autenticar";
   }
-  return state.online ? "Online" : "Authenticated";
+  return state.online ? "En línea" : "Autenticado";
 }
 
 bool ConnectLifeClient::ensureAuthenticated()

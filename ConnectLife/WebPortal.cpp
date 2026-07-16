@@ -11,7 +11,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ConnectLife Thermostat</title>
+  <title>Termostato ConnectLife</title>
   <style>
     :root{color-scheme:dark;--bg:#111418;--panel:#1c2229;--line:#303842;--text:#f5f7fb;--muted:#9ba8b5;--hot:#ff6b35;--cool:#45b7d1;--ok:#6bd490;--bad:#ff5f73}
     *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 50% 0,#25303b,#111418 48%);color:var(--text);min-height:100vh}
@@ -29,7 +29,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
   </style>
 </head>
 <body>
-  <header><div class="brand">CONNECTLIFE</div><div class="status" id="wifi">--</div><a href="/config">Config</a></header>
+  <header><div class="brand">CONNECTLIFE</div><div class="status" id="wifi">--</div><a href="/config">Configuración</a></header>
   <main>
     <section class="thermo"><div class="dial"><div><div class="ambient" id="ambient">--.- C ambiente</div><div class="target"><span id="target">--</span><span>C</span></div><div class="humidity" id="humidity">--% humedad</div></div></div></section>
     <section class="grid">
@@ -38,24 +38,28 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(
         <div class="metric"><span>ConnectLife</span><b id="cl">--</b></div>
         <div class="metric"><span>Modo</span><b id="mode">--</b></div>
         <div class="metric"><span>Velocidad</span><b id="fan">--</b></div>
-        <div class="metric"><span>Swing / Sleep / Turbo</span><b id="flags">--</b></div>
+        <div class="metric"><span>Oscilación / Sueño / Turbo</span><b id="flags">--</b></div>
         <div class="metric"><span>Última sincronización</span><b id="sync">--</b></div>
       </div>
       <div class="panel grid">
         <div class="row"><button class="primary" onclick="cmd('power',{on:true})">Encender</button><button class="danger" onclick="cmd('power',{on:false})">Apagar</button><button onclick="refresh()">Actualizar</button><button onclick="restart()">Reiniciar ESP</button></div>
         <div class="sliderRow"><button onclick="stepTemp(-1)">-</button><input id="tempSlider" type="range" min="16" max="30" step="1" oninput="target.innerText=this.value" onchange="cmd('temperature',{temperature:Number(this.value)})"><button onclick="stepTemp(1)">+</button></div>
-        <div class="tiny">Modo</div><div class="seg"><button onclick="cmd('mode',{mode:'cool'})">Cool</button><button onclick="cmd('mode',{mode:'heat'})">Heat</button><button onclick="cmd('mode',{mode:'dry'})">Dry</button><button onclick="cmd('mode',{mode:'fan'})">Fan</button><button onclick="cmd('mode',{mode:'auto'})">Auto</button></div>
-        <div class="tiny">Velocidad</div><div class="seg four"><button onclick="cmd('fan',{fan:'auto'})">Auto</button><button onclick="cmd('fan',{fan:'low'})">Low</button><button onclick="cmd('fan',{fan:'medium'})">Medium</button><button onclick="cmd('fan',{fan:'high'})">High</button></div>
-        <div class="toggles"><button onclick="toggle('swing')">Swing</button><button onclick="toggle('sleep')">Sleep</button><button onclick="toggle('turbo')">Turbo</button></div>
+        <div class="tiny">Modo</div><div class="seg"><button onclick="cmd('mode',{mode:'cool'})">Frío</button><button onclick="cmd('mode',{mode:'heat'})">Calor</button><button onclick="cmd('mode',{mode:'dry'})">Seco</button><button onclick="cmd('mode',{mode:'fan'})">Ventilar</button><button onclick="cmd('mode',{mode:'auto'})">Auto</button></div>
+        <div class="tiny">Velocidad</div><div class="seg four"><button onclick="cmd('fan',{fan:'auto'})">Auto</button><button onclick="cmd('fan',{fan:'low'})">Baja</button><button onclick="cmd('fan',{fan:'medium'})">Media</button><button onclick="cmd('fan',{fan:'high'})">Alta</button></div>
+        <div class="toggles"><button onclick="toggle('swing')">Oscilación</button><button onclick="toggle('sleep')">Sueño</button><button onclick="toggle('turbo')">Turbo</button></div>
       </div>
     </section>
   </main>
   <script>
     const $=id=>document.getElementById(id); let last={swing:false,sleep:false,turbo:false};
+    const MODOS={cool:'Frío',heat:'Calor',dry:'Seco',fan:'Ventilar',auto:'Auto',off:'Apagado'};
+    const VELOCIDADES={auto:'Auto',low:'Baja',medium:'Media',high:'Alta'};
+    const ENCENDIDO={On:'Encendido',Off:'Apagado',Unknown:'Desconocido'};
+    const BANDERAS={swing:'Oscilación',sleep:'Sueño',turbo:'Turbo'};
     async function post(url,data={}){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();if(!j.ok) alert(j.message||'Error'); await refresh();}
     async function cmd(action,data){await post('/api/ac/'+action,data)} async function toggle(k){const d={};d[k]=!last[k];await cmd(k,d)} function restart(){post('/api/restart')}
     function stepTemp(n){const s=$('tempSlider');s.value=Number(s.value)+n;$('target').innerText=s.value;cmd('temperature',{temperature:Number(s.value)})}
-    async function refresh(){const r=await fetch('/api/state');const s=await r.json();last=s.ac;$('wifi').innerText=s.wifi.status+' '+s.wifi.ip;$('ambient').innerText=s.sensor.valid?s.sensor.temperature.toFixed(1)+' C ambiente':'Sensor sin lectura';$('humidity').innerText=s.sensor.valid?s.sensor.humidity.toFixed(0)+'% humedad':'--% humedad';$('target').innerText=s.ac.targetTemperature;$('tempSlider').value=s.ac.targetTemperature;$('power').innerText=s.ac.power;$('cl').innerText=s.connectLife.status;$('mode').innerText=s.ac.mode;$('fan').innerText=s.ac.fanSpeed;$('flags').innerText=['swing','sleep','turbo'].filter(k=>s.ac[k]).join(' / ')||'--';$('sync').innerText=s.ac.lastSyncSecondsAgo>=0?s.ac.lastSyncSecondsAgo+'s':'--';}
+    async function refresh(){const r=await fetch('/api/state');const s=await r.json();last=s.ac;$('wifi').innerText=s.wifi.status+' '+s.wifi.ip;$('ambient').innerText=s.sensor.valid?s.sensor.temperature.toFixed(1)+' C ambiente':'Sensor sin lectura';$('humidity').innerText=s.sensor.valid?s.sensor.humidity.toFixed(0)+'% humedad':'--% humedad';$('target').innerText=s.ac.targetTemperature;$('tempSlider').value=s.ac.targetTemperature;$('power').innerText=ENCENDIDO[s.ac.power]||s.ac.power;$('cl').innerText=s.connectLife.status;$('mode').innerText=MODOS[s.ac.mode]||s.ac.mode;$('fan').innerText=VELOCIDADES[s.ac.fanSpeed]||s.ac.fanSpeed;$('flags').innerText=['swing','sleep','turbo'].filter(k=>s.ac[k]).map(k=>BANDERAS[k]).join(' / ')||'--';$('sync').innerText=s.ac.lastSyncSecondsAgo>=0?'hace '+s.ac.lastSyncSecondsAgo+' s':'--';}
     refresh(); setInterval(refresh,4000);
   </script>
 </body>
@@ -83,23 +87,23 @@ static const char CONFIG_HTML[] PROGMEM = R"HTML(
   <main>
     <section class="panel">
       <div class="grid">
-        <label>SSID WiFi<input id="wifiSsid"></label><label>Password WiFi<input id="wifiPassword" type="password"></label>
-        <label>Correo ConnectLife<input id="email" type="email"></label><label>Password ConnectLife<input id="password" type="password"></label>
-        <label>ConnectLife API Base URL<input id="apiBaseUrl"></label><label>Device ID<input id="deviceId"></label>
+        <label>SSID WiFi<input id="wifiSsid"></label><label>Contraseña WiFi<input id="wifiPassword" type="password"></label>
+        <label>Correo ConnectLife<input id="email" type="email"></label><label>Contraseña ConnectLife<input id="password" type="password"></label>
+        <label>URL base del API ConnectLife<input id="apiBaseUrl"></label><label>ID del dispositivo<input id="deviceId"></label>
       </div>
       <p class="status" id="token">Token: --</p>
-      <div class="row"><button class="primary" onclick="save()">Guardar</button><button onclick="login()">Login</button><button onclick="refresh()">Actualizar estado</button><button class="danger" onclick="restart()">Reiniciar ESP</button></div>
+      <div class="row"><button class="primary" onclick="save()">Guardar</button><button onclick="login()">Iniciar sesión</button><button onclick="refresh()">Actualizar estado</button><button class="danger" onclick="restart()">Reiniciar ESP</button></div>
     </section>
     <section class="panel">
       <h2>Actualizar Firmware OTA</h2>
       <form method="POST" action="/update" enctype="multipart/form-data"><input type="file" name="firmware" accept=".bin"><br><br><button class="primary" type="submit">Actualizar Firmware</button></form>
     </section>
-    <section class="panel"><h2>Logs</h2><pre id="logs"></pre></section>
+    <section class="panel"><h2>Registro</h2><pre id="logs"></pre></section>
   </main>
   <script>
     const $=id=>document.getElementById(id); let loaded=false; let dirty=false;
     ['wifiSsid','wifiPassword','email','password','apiBaseUrl','deviceId'].forEach(id=>$(id).addEventListener('input',()=>dirty=true));
-    async function refresh(){const s=await (await fetch('/api/state')).json();if(!loaded&&!dirty){$('wifiSsid').value=s.config.wifiSsid||'';$('email').value=s.config.email||'';$('apiBaseUrl').value=s.config.apiBaseUrl||'';$('deviceId').value=s.config.deviceId||'';loaded=true;}$('token').innerText='Token: '+(s.config.hasAccessToken?'guardado':'sin token')+' | Device ID: '+(s.config.deviceId||'--')+' | '+s.connectLife.status;$('logs').innerText=await (await fetch('/api/logs')).text();}
+    async function refresh(){const s=await (await fetch('/api/state')).json();if(!loaded&&!dirty){$('wifiSsid').value=s.config.wifiSsid||'';$('email').value=s.config.email||'';$('apiBaseUrl').value=s.config.apiBaseUrl||'';$('deviceId').value=s.config.deviceId||'';loaded=true;}$('token').innerText='Token: '+(s.config.hasAccessToken?'guardado':'sin token')+' | ID dispositivo: '+(s.config.deviceId||'--')+' | '+s.connectLife.status;$('logs').innerText=await (await fetch('/api/logs')).text();}
     async function post(url,data={}){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();alert(j.message||'OK');dirty=false;loaded=false;await refresh();}
     function save(){post('/api/config',{wifiSsid:$('wifiSsid').value,wifiPassword:$('wifiPassword').value,email:$('email').value,password:$('password').value,apiBaseUrl:$('apiBaseUrl').value,deviceId:$('deviceId').value})}
     function login(){post('/api/login')} function restart(){post('/api/restart')} refresh(); setInterval(refresh,5000);
@@ -177,7 +181,7 @@ void WebPortal::redirectToConfig()
   const String host = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   const String url = "http://" + host + "/config";
   server.sendHeader("Location", url, true);
-  server.send(302, "text/plain; charset=utf-8", "Configuracion: " + url);
+  server.send(302, "text/plain; charset=utf-8", "Configuración: " + url);
 }
 
 void WebPortal::sendState()
@@ -187,7 +191,7 @@ void WebPortal::sendState()
   const SensorReading reading = sensor.getReading();
   const AcState ac = connectLife.getState();
 
-  doc["wifi"]["status"] = WiFi.status() == WL_CONNECTED ? "WiFi" : "AP/Offline";
+  doc["wifi"]["status"] = WiFi.status() == WL_CONNECTED ? "WiFi" : "AP/Sin red";
   doc["wifi"]["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   doc["connectLife"]["status"] = connectLife.statusText();
 
@@ -314,10 +318,10 @@ void WebPortal::handleOtaUpload()
 void WebPortal::finishOta()
 {
   if (Update.hasError()) {
-    server.send(500, "text/plain", "OTA failed");
+    server.send(500, "text/plain; charset=utf-8", "La actualización OTA falló");
     return;
   }
-  server.send(200, "text/plain", "OTA OK. Rebooting...");
+  server.send(200, "text/plain; charset=utf-8", "OTA correcta. Reiniciando...");
   delay(500);
   ESP.restart();
 }
