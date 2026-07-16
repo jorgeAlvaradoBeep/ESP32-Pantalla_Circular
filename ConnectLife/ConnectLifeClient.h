@@ -61,14 +61,18 @@ private:
                    const String &url,
                    const JsonDocument *body,
                    JsonDocument &response,
-                   const String &contentType);
+                   const String &contentType,
+                   JsonDocument *filter = nullptr,
+                   bool logBody = false);
   bool requestRaw(const char *method,
                   const String &url,
                   const String &payload,
                   JsonDocument &response,
-                  const String &contentType);
+                  const String &contentType,
+                  JsonDocument *filter = nullptr,
+                  bool logBody = false);
   bool requestForm(const String &url, const String &formBody, JsonDocument &response);
-  bool requestConnectLifeGet(const String &path, JsonDocument &response);
+  bool requestConnectLifeGet(const String &path, JsonDocument &response, JsonDocument *filter = nullptr);
   bool requestConnectLifePost(const String &path, JsonDocument &body, JsonDocument &response);
   bool sendCommand(const String &capability, bool value);
   bool sendCommand(const String &capability, int value);

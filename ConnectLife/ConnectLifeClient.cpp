@@ -134,8 +134,15 @@ bool ConnectLifeClient::discoverDevice()
     return false;
   }
 
-  DynamicJsonDocument response(16384);
-  if (!requestConnectLifeGet("/clife-svc/pu/get_device_status_list", response)) {
+  StaticJsonDocument<768> filter;
+  const char *deviceKeys[] = {"puid", "deviceNickName", "deviceTypeCode", "deviceFeatureCode", "offlineState"};
+  for (const char *key : deviceKeys) {
+    filter["response"]["deviceList"][0][key] = true;
+    filter["deviceList"][0][key] = true;
+  }
+
+  DynamicJsonDocument response(8192);
+  if (!requestConnectLifeGet("/clife-svc/pu/get_device_status_list", response, &filter)) {
     return false;
   }
 
@@ -154,8 +161,21 @@ bool ConnectLifeClient::pollState()
     return false;
   }
 
-  DynamicJsonDocument response(16384);
-  if (!requestConnectLifeGet("/clife-svc/pu/get_device_status_list", response)) {
+  StaticJsonDocument<1024> filter;
+  const char *pollDeviceKeys[] = {"puid", "offlineState"};
+  const char *statusKeys[] = {"t_power", "t_temp", "t_work_mode", "t_fan_speed",
+                              "t_sleep", "t_super", "t_swing_direction", "t_swing_angle"};
+  for (const char *key : pollDeviceKeys) {
+    filter["response"]["deviceList"][0][key] = true;
+    filter["deviceList"][0][key] = true;
+  }
+  for (const char *key : statusKeys) {
+    filter["response"]["deviceList"][0]["statusList"][key] = true;
+    filter["deviceList"][0]["statusList"][key] = true;
+  }
+
+  DynamicJsonDocument response(8192);
+  if (!requestConnectLifeGet("/clife-svc/pu/get_device_status_list", response, &filter)) {
     return false;
   }
 
@@ -262,20 +282,24 @@ bool ConnectLifeClient::requestJson(const char *method,
                                     const String &url,
                                     const JsonDocument *body,
                                     JsonDocument &response,
-                                    const String &contentType)
+                                    const String &contentType,
+                                    JsonDocument *filter,
+                                    bool logBody)
 {
   String payload;
   if (body != nullptr) {
     serializeJson(*body, payload);
   }
-  return requestRaw(method, url, payload, response, contentType);
+  return requestRaw(method, url, payload, response, contentType, filter, logBody);
 }
 
 bool ConnectLifeClient::requestRaw(const char *method,
                                    const String &url,
                                    const String &payload,
                                    JsonDocument &response,
-                                   const String &contentType)
+                                   const String &contentType,
+                                   JsonDocument *filter,
+                                   bool logBody)
 {
   WiFiClientSecure client;
   client.setInsecure();
@@ -305,8 +329,15 @@ bool ConnectLifeClient::requestRaw(const char *method,
   const String responseBody = http.getString();
   http.end();
 
+  if (logBody) {
+    Serial.println("---- ConnectLife " + String(method) + " " + url);
+    Serial.println("---- HTTP " + String(status) + ", " + String(responseBody.length()) + " bytes:");
+    Serial.println(responseBody);
+    Serial.println("----");
+  }
+
   if (status < 200 || status >= 300) {
-    recordError("HTTP " + String(status) + " from " + url);
+    recordError("HTTP " + String(status) + " from " + url + " body: " + responseBody.substring(0, 200));
     return false;
   }
 
@@ -314,9 +345,11 @@ bool ConnectLifeClient::requestRaw(const char *method,
     return true;
   }
 
-  DeserializationError error = deserializeJson(response, responseBody);
+  DeserializationError error = filter != nullptr
+      ? deserializeJson(response, responseBody, DeserializationOption::Filter(*filter))
+      : deserializeJson(response, responseBody);
   if (error) {
-    recordError("JSON parse failed: " + String(error.c_str()));
+    recordError("JSON parse failed: " + String(error.c_str()) + " (body " + String(responseBody.length()) + " bytes)");
     return false;
   }
 
@@ -328,19 +361,35 @@ bool ConnectLifeClient::requestForm(const String &url, const String &formBody, J
   return requestRaw("POST", url, formBody, response, "application/x-www-form-urlencoded");
 }
 
-bool ConnectLifeClient::requestConnectLifeGet(const String &path, JsonDocument &response)
+bool ConnectLifeClient::requestConnectLifeGet(const String &path, JsonDocument &response, JsonDocument *filter)
 {
-  DynamicJsonDocument payload(1536);
+  DynamicJsonDocument payload(6144);
   buildCommonPayload(payload, true);
   const String query = buildSignedQuery(payload);
-  return requestJson("GET", apiUrl(path) + "?" + query, nullptr, response, "application/json");
+  if (payload.overflowed()) {
+    recordError("Signed GET payload overflowed its JsonDocument");
+    return false;
+  }
+  if (payload["sign"].as<String>().length() == 0) {
+    recordError("Signature missing from GET request");
+    return false;
+  }
+  return requestJson("GET", apiUrl(path) + "?" + query, nullptr, response, "application/json", filter, true);
 }
 
 bool ConnectLifeClient::requestConnectLifePost(const String &path, JsonDocument &body, JsonDocument &response)
 {
   buildCommonPayload(body, true);
   body["sign"] = getSignature(body);
-  return requestJson("POST", apiUrl(path), &body, response, "application/json");
+  if (body.overflowed()) {
+    recordError("Signed POST payload overflowed its JsonDocument");
+    return false;
+  }
+  if (body["sign"].as<String>().length() == 0) {
+    recordError("Signature missing from POST request");
+    return false;
+  }
+  return requestJson("POST", apiUrl(path), &body, response, "application/json", nullptr, true);
 }
 
 bool ConnectLifeClient::sendCommand(const String &capability, bool value)
@@ -376,7 +425,7 @@ bool ConnectLifeClient::sendCommandDocument(JsonDocument &properties)
   }
 
   cfg = configStore.get();
-  DynamicJsonDocument body(2048);
+  DynamicJsonDocument body(6144);
   body["puid"] = cfg.deviceId;
   JsonObject props = body.createNestedObject("properties");
   for (JsonPair kv : properties.as<JsonObject>()) {
@@ -421,19 +470,48 @@ bool ConnectLifeClient::parseDeviceList(JsonDocument &doc)
     devices = doc["deviceList"].as<JsonArray>();
   }
 
+  if (devices.isNull()) {
+    recordError("Server response has no deviceList (raw body printed on serial: likely bad sign/token/timeStamp)");
+    return false;
+  }
+
+  if (devices.size() == 0) {
+    recordError("Account has 0 devices on this gateway. Check account region / API base URL");
+    return false;
+  }
+
+  String fallbackPuid;
+  String fallbackDetail;
   for (JsonObject device : devices) {
     const String puid = device["puid"].as<String>();
+    const String name = device["deviceNickName"].as<String>();
     const String typeCode = device["deviceTypeCode"].as<String>();
     const int offlineState = device["offlineState"] | 0;
-    if (puid.length() > 0 && offlineState == 1 &&
+    logger.info("Device: puid=" + puid + " name=" + name + " type=" + typeCode +
+                " online=" + String(offlineState));
+    if (puid.length() == 0) {
+      continue;
+    }
+    if (offlineState == 1 &&
         (typeCode == "009" || typeCode == "006" || typeCode == "008")) {
       configStore.saveDeviceId(puid);
       logger.info("ConnectLife AC discovered: " + puid);
       return true;
     }
+    if (fallbackPuid.length() == 0) {
+      fallbackPuid = puid;
+      fallbackDetail = "type=" + typeCode + " online=" + String(offlineState);
+    }
   }
 
-  recordError("No online AC device found");
+  if (fallbackPuid.length() > 0) {
+    logger.warn("No device matched AC filter (type 009/006/008 + online). Falling back to first device: " +
+                fallbackPuid + " (" + fallbackDetail + ")");
+    configStore.saveDeviceId(fallbackPuid);
+    return true;
+  }
+
+  recordError("Device list had entries but none with a puid");
   return false;
 }
 
@@ -467,7 +545,14 @@ void ConnectLifeClient::parseState(JsonDocument &doc)
   }
 
   state.power = AcPower::Unknown;
-  recordError("Configured AC was not found in status list");
+  String available;
+  for (JsonObject device : devices) {
+    if (available.length() > 0) {
+      available += ", ";
+    }
+    available += device["puid"].as<String>();
+  }
+  recordError("Configured AC " + cfg.deviceId + " not in status list. Available: [" + available + "]");
 }
 
 String ConnectLifeClient::apiUrl(const String &path) const
@@ -483,6 +568,9 @@ String ConnectLifeClient::apiUrl(const String &path) const
 String ConnectLifeClient::buildCommonPayload(JsonDocument &doc, bool includeAccessToken)
 {
   const String ts = currentTimestampMs();
+  if (ts.length() < 13) {
+    logger.warn("NTP not synced yet; timeStamp " + ts + " will likely be rejected by the server");
+  }
   doc["appId"] = CONNECTLIFE_APP_ID;
   doc["appSecret"] = CONNECTLIFE_APP_SECRET;
   doc["languageId"] = "12";
@@ -680,6 +768,10 @@ String ConnectLifeClient::fanFromCode(const String &code) const
 
 uint32_t ConnectLifeClient::nowEpoch() const
 {
+  const time_t now = time(nullptr);
+  if (now > 1700000000) {
+    return static_cast<uint32_t>(now);
+  }
   return millis() / 1000;
 }
 
