@@ -58,6 +58,20 @@ static uint8_t sceneIndex = 0;
 static uint32_t sceneStartMs = 0;
 static uint16_t plasmaPalette[64];
 
+// Structs declarados aqui arriba: el preprocesador del IDE de Arduino inserta
+// los prototipos de las funciones antes del cuerpo del sketch, y cualquier
+// tipo usado en una firma debe existir antes de esos prototipos.
+struct RadarBlip {
+  float angleDeg;
+  float radius;
+  uint32_t hitMs;
+};
+
+struct Scene {
+  void (*init)();
+  void (*update)(uint32_t now);
+};
+
 // --- Utilidades --------------------------------------------------------------
 static void printCentered(const String &text, int16_t y, uint8_t size, uint16_t color)
 {
@@ -414,11 +428,6 @@ static void eqUpdate(uint32_t now)
 // ============================================================================
 // Escena 8: radar
 // ============================================================================
-struct RadarBlip {
-  float angleDeg;
-  float radius;
-  uint32_t hitMs;
-};
 static RadarBlip blips[5];
 static float radarAngle;
 static uint32_t radarLastMs;
@@ -560,11 +569,6 @@ static void mandalaUpdate(uint32_t)
 // ============================================================================
 // Gestor de escenas
 // ============================================================================
-struct Scene {
-  void (*init)();
-  void (*update)(uint32_t now);
-};
-
 static const Scene SCENES[SCENE_COUNT] = {
     {introInit, introUpdate},
     {gaugeInit, gaugeUpdate},
