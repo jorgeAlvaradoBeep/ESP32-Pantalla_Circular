@@ -4,6 +4,7 @@
 #include <Preferences.h>
 
 #include "AppLogger.h"
+#include "ControlTypes.h"
 
 struct DeviceConfig {
   String wifiSsid;
@@ -15,6 +16,7 @@ struct DeviceConfig {
   String uid;
   String deviceId;
   String apiBaseUrl;
+  String timezone;
   uint32_t tokenExpiresAtEpoch;
 };
 
@@ -33,12 +35,19 @@ public:
                               uint32_t expiresAtEpoch);
   void saveApiBaseUrl(const String &apiBaseUrl);
   void saveDeviceId(const String &deviceId);
+  void saveTimezone(const String &timezone);
   void clearConnectLifeSession();
+
+  const ControlConfig &getControl() const;
+  void saveControl(const ControlConfig &control);
 
 private:
   Preferences preferences;
   DeviceConfig config;
+  ControlConfig control;
   AppLogger &logger;
+
+  void loadControl();
 
   String readString(const char *key, const String &fallback = "");
   uint32_t readUInt(const char *key, uint32_t fallback = 0);

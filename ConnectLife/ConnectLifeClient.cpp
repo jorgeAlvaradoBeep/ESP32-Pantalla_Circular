@@ -163,8 +163,14 @@ bool ConnectLifeClient::pollState()
 
   StaticJsonDocument<1024> filter;
   const char *pollDeviceKeys[] = {"puid", "offlineState"};
+  // Nota: t_temp es el SETPOINT del equipo, no lo que mide. La temperatura
+  // ambiente interna se publica con un nombre que varía entre modelos, así que
+  // pedimos todos los candidatos conocidos y en parseState() usamos el primero
+  // que venga. Si tu equipo usa otro nombre, vuélcalo con tools/connectlife_probe.py
+  // y añádelo aquí y en AMBIENT_KEYS.
   const char *statusKeys[] = {"t_power", "t_temp", "t_work_mode", "t_fan_speed",
-                              "t_sleep", "t_super", "t_swing_direction", "t_swing_angle"};
+                              "t_sleep", "t_super", "t_swing_direction", "t_swing_angle",
+                              "f_temp_in", "f_temp_indoor", "t_temp_in", "f_temp_current"};
   for (const char *key : pollDeviceKeys) {
     filter["response"]["deviceList"][0][key] = true;
     filter["deviceList"][0][key] = true;
@@ -541,6 +547,22 @@ void ConnectLifeClient::parseState(JsonDocument &doc)
     state.sleep = status["t_sleep"].as<String>() == "1";
     state.turbo = status["t_super"].as<String>() == "1";
     state.swing = status["t_swing_direction"].as<String>() == "3" || status["t_swing_angle"].as<String>() == "0";
+
+    // Primer candidato presente y con valor plausible gana.
+    static const char *AMBIENT_KEYS[] = {"f_temp_in", "f_temp_indoor", "t_temp_in", "f_temp_current"};
+    state.hasAmbient = false;
+    state.ambientTemperature = NAN;
+    for (const char *key : AMBIENT_KEYS) {
+      if (!status.containsKey(key)) {
+        continue;
+      }
+      const float value = status[key].as<String>().toFloat();
+      if (value > -20.0f && value < 70.0f) {
+        state.ambientTemperature = value;
+        state.hasAmbient = true;
+        break;
+      }
+    }
     return;
   }
 

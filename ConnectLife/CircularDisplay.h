@@ -15,7 +15,12 @@ public:
   void showWiFiConnected(const IPAddress &ip);
   void showSetupPortal(const IPAddress &ip, const String &ssid);
   void showConnectLifeStatus(const String &status, bool ok);
-  void showReady(const IPAddress &ip, float ambientTemp, int targetTemp, const String &mode);
+  void showReady(const IPAddress &ip,
+                 float ambientTemp,
+                 float acAmbientTemp,
+                 int targetTemp,
+                 const String &mode,
+                 const String &controlLine);
   void showError(const String &title, const String &detail, const String &hint);
   void tick();
 

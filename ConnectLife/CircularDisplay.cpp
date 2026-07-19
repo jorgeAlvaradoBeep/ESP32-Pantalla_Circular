@@ -76,14 +76,19 @@ void CircularDisplay::showConnectLifeStatus(const String &status, bool ok)
   drawStatusLine(fitText(status, 22), ok ? COL_TEXT : COL_WARN);
 }
 
-void CircularDisplay::showReady(const IPAddress &ip, float ambientTemp, int targetTemp, const String &mode)
+void CircularDisplay::showReady(const IPAddress &ip,
+                                float ambientTemp,
+                                float acAmbientTemp,
+                                int targetTemp,
+                                const String &mode,
+                                const String &controlLine)
 {
   if (!ready) return;
   gfx->fillScreen(COL_BG);
   ringArc(0, 360, COL_RING_B);
   ringArc(270, 280, COL_RING_F);
 
-  printCentered("ConnectLife", 48, 2, COL_TITLE);
+  printCentered("ConnectLife", 44, 2, COL_TITLE);
 
   char temp[18];
   if (isnan(ambientTemp)) {
@@ -91,12 +96,20 @@ void CircularDisplay::showReady(const IPAddress &ip, float ambientTemp, int targ
   } else {
     snprintf(temp, sizeof(temp), "%.1f C", ambientTemp);
   }
-  printCentered(temp, 88, 3, COL_TEXT);
+  printCentered(temp, 72, 3, COL_TEXT);
 
-  String target = "Objetivo " + String(targetTemp) + " C";
-  printCentered(target, 130, 1, COL_TEXT);
-  printCentered("Modo " + mode, 148, 1, COL_MUTED);
-  printCentered(ip.toString(), 174, 1, COL_MUTED);
+  char acTemp[24];
+  if (isnan(acAmbientTemp)) {
+    snprintf(acTemp, sizeof(acTemp), "Aire -- C");
+  } else {
+    snprintf(acTemp, sizeof(acTemp), "Aire %.1f C", acAmbientTemp);
+  }
+  printCentered(acTemp, 104, 1, COL_MUTED);
+
+  printCentered("Objetivo " + String(targetTemp) + " C", 118, 1, COL_TEXT);
+  printCentered("Modo " + mode, 132, 1, COL_MUTED);
+  printCentered(fitText(controlLine, 22), 150, 1, COL_RING_F);
+  printCentered(ip.toString(), 170, 1, COL_MUTED);
 }
 
 void CircularDisplay::showError(const String &title, const String &detail, const String &hint)

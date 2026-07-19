@@ -1,6 +1,16 @@
 #include "AppConfig.h"
 #include "Config.h"
 
+// El bloque de control se guarda como blob binario con un byte de versión al
+// frente, para poder migrarlo sin borrar la configuración del usuario.
+static const uint8_t CONTROL_BLOB_VERSION = 1;
+static const char CONTROL_BLOB_KEY[] = "ctrl_blob";
+
+struct ControlBlob {
+  uint8_t version;
+  ControlConfig config;
+};
+
 AppConfig::AppConfig(AppLogger &loggerRef) : logger(loggerRef) {}
 
 void AppConfig::begin()
@@ -15,8 +25,45 @@ void AppConfig::begin()
   config.uid = readString("cl_uid");
   config.deviceId = readString("cl_device");
   config.apiBaseUrl = readString("cl_base", CONNECTLIFE_DEFAULT_API_BASE_URL);
+  config.timezone = readString("tz", DEFAULT_TZ);
   config.tokenExpiresAtEpoch = readUInt("cl_exp", 0);
+  loadControl();
   logger.info("Configuration loaded from NVS");
+}
+
+void AppConfig::loadControl()
+{
+  ControlBlob blob;
+  const size_t read = preferences.getBytes(CONTROL_BLOB_KEY, &blob, sizeof(blob));
+  if (read != sizeof(blob) || blob.version != CONTROL_BLOB_VERSION) {
+    control = ControlConfig();
+    logger.info("Control config not stored yet, using defaults");
+    return;
+  }
+  control = blob.config;
+  logger.info("Control config loaded from NVS");
+}
+
+const ControlConfig &AppConfig::getControl() const
+{
+  return control;
+}
+
+void AppConfig::saveControl(const ControlConfig &controlConfig)
+{
+  control = controlConfig;
+  ControlBlob blob;
+  blob.version = CONTROL_BLOB_VERSION;
+  blob.config = controlConfig;
+  preferences.putBytes(CONTROL_BLOB_KEY, &blob, sizeof(blob));
+  logger.info("Control config saved");
+}
+
+void AppConfig::saveTimezone(const String &timezone)
+{
+  config.timezone = timezone;
+  writeString("tz", timezone);
+  logger.info("Timezone saved: " + timezone);
 }
 
 DeviceConfig AppConfig::get() const

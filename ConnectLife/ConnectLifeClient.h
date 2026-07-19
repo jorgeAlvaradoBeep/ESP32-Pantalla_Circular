@@ -17,6 +17,10 @@ enum class AcPower {
 struct AcState {
   AcPower power = AcPower::Unknown;
   int targetTemperature = 24;
+  // Temperatura ambiente medida por el sensor interno del propio equipo.
+  // No siempre la publica: hasAmbient dice si el dato es fiable.
+  float ambientTemperature = NAN;
+  bool hasAmbient = false;
   String mode = "auto";
   String fanSpeed = "auto";
   bool swing = false;

@@ -9,6 +9,7 @@
 #include "Config.h"
 #include "ConnectLifeClient.h"
 #include "Sensor.h"
+#include "TempControl.h"
 #include "WebPortal.h"
 #include "secrets.example.h"
 
@@ -16,7 +17,8 @@ AppLogger logger;
 AppConfig appConfig(logger);
 Sensor sensor(DHT_PIN, DHT11, logger);
 ConnectLifeClient connectLife(appConfig, logger);
-WebPortal webPortal(appConfig, connectLife, sensor, logger);
+TempControl tempControl(appConfig, connectLife, sensor, logger);
+WebPortal webPortal(appConfig, connectLife, sensor, tempControl, logger);
 CircularDisplay display;
 DNSServer dnsServer;
 
@@ -24,6 +26,9 @@ static unsigned long lastSensorReadMs = 0;
 static unsigned long lastConnectLifePollMs = 0;
 static unsigned long lastWiFiReconnectMs = 0;
 static bool setupPortalActive = false;
+// La página de estado de ConnectLife solo se muestra un rato tras un fallo;
+// si no, tapaba permanentemente la página de termostato.
+static unsigned long statusOverlayUntilMs = 0;
 
 static void startWiFi()
 {
@@ -45,7 +50,10 @@ static void startWiFi()
   if (WiFi.status() == WL_CONNECTED) {
     logger.info("WiFi connected. IP: " + WiFi.localIP().toString());
     display.showWiFiConnected(WiFi.localIP());
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    // Hora local (no UTC): los horarios del control autónomo se definen en la
+    // hora de pared del usuario.
+    const String tz = cfg.timezone.length() > 0 ? cfg.timezone : String(DEFAULT_TZ);
+    configTzTime(tz.c_str(), "pool.ntp.org", "time.nist.gov");
     const unsigned long timeStartMs = millis();
     while (time(nullptr) < 1700000000 && millis() - timeStartMs < 5000) {
       display.tick();
@@ -103,6 +111,7 @@ void setup()
   startWiFi();
 
   connectLife.begin();
+  tempControl.begin();
   webPortal.begin();
   if (!setupPortalActive || appConfig.get().wifiSsid.length() > 0) {
     display.showConnectLifeStatus(connectLife.statusText(), connectLife.hasSession());
@@ -122,11 +131,19 @@ void loop()
   if (now - lastSensorReadMs >= SENSOR_READ_INTERVAL_MS) {
     lastSensorReadMs = now;
     sensor.update();
-    if (!setupPortalActive || appConfig.get().wifiSsid.length() > 0) {
-      const SensorReading reading = sensor.getReading();
+    const SensorReading reading = sensor.getReading();
+    tempControl.addSample(reading);
+
+    const bool overlayActive = statusOverlayUntilMs != 0 && now < statusOverlayUntilMs;
+    if (!overlayActive && (!setupPortalActive || appConfig.get().wifiSsid.length() > 0)) {
       const AcState ac = connectLife.getState();
       const IPAddress ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP();
-      display.showReady(ip, reading.temperatureC, ac.targetTemperature, ac.mode);
+      display.showReady(ip,
+                        reading.temperatureC,
+                        ac.hasAmbient ? ac.ambientTemperature : NAN,
+                        ac.targetTemperature,
+                        ac.mode,
+                        tempControl.displayLine());
     }
   }
 
@@ -134,8 +151,13 @@ void loop()
     lastConnectLifePollMs = now;
     if (!connectLife.pollState()) {
       display.showError("ConnectLife", connectLife.statusText(), "Revisa /config");
+      statusOverlayUntilMs = millis() + 5000;
     } else {
-      display.showConnectLifeStatus(connectLife.statusText(), true);
+      statusOverlayUntilMs = 0;
     }
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    tempControl.loop(millis());
   }
 }

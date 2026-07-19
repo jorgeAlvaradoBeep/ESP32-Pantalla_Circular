@@ -23,7 +23,58 @@ Proyecto modular para controlar un aire acondicionado Hisense con ConnectLife de
 - `AppConfig.*`: configuración persistente en Preferences/NVS.
 - `Sensor.*`: capa desacoplada para DHT11; se puede sustituir por SHT31 sin tocar la UI.
 - `AppLogger.*`: logs en memoria para `/config`.
-- `Config.h`: constantes de pines, intervalos y endpoint base por defecto.
+- `TempControl.*`: lazo autónomo de temperatura (PI + horarios).
+- `ControlTypes.h`: tipos compartidos del control (`Schedule`, `ControlConfig`).
+- `Config.h`: constantes de pines, intervalos, ganancias del control y endpoint base por defecto.
+
+## Compilación
+
+El esquema de particiones por defecto (4 MB) deja el sketch al 97 % del espacio de
+app y no da margen para OTA. Compila con el esquema de 8 MB:
+
+```
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=default_8MB,PSRAM=opi" ConnectLife
+```
+
+Con eso el uso baja al 38 % (1.29 MB de 3.34 MB) y quedan las dos particiones de app
+que el OTA necesita. En Arduino IDE: *Tools > Flash Size: 8MB* y
+*Partition Scheme: 8M with spiffs (3MB APP/1.5MB SPIFFS)*.
+
+## Control autónomo de temperatura
+
+Página `/control`. El equipo solo acepta un setpoint entero y regula contra su
+propio sensor, que está dentro de la unidad y no donde está el usuario. Por eso
+el firmware no le reenvía el objetivo tal cual: mide con el sensor local, calcula
+el error contra lo que pidió el usuario y le manda un **setpoint virtual sesgado**
+hasta que el cuarto llega de verdad a la temperatura pedida.
+
+- **Lazo PI** (`CONTROL_KP`, `CONTROL_KI` en `Config.h`), sesgo limitado a ±5 °C.
+- **Objetivo del usuario**: 18-25 °C. **Setpoint enviado al equipo**: 16-30 °C.
+- **Evaluación** cada 60 s sobre una media móvil de 60 s del sensor.
+- **Banda muerta de 0.8 °C**, dictada por el DHT11 (±2 °C de exactitud, 1 °C de
+  resolución). Con un SHT31/SHT40 puede bajarse a ~0.3 °C y ahí el control pasa a
+  ser realmente preciso.
+- **Mínimo 10 min entre escrituras** al equipo, para proteger el compresor de
+  ciclos cortos y no saturar la nube. No aplica al primer comando de un bloque.
+
+### Prioridades
+
+1. **Petición instantánea** (`Aplicar ahora`) — pisa cualquier horario. Se cancela
+   sola cuando arranca el siguiente bloque programado.
+2. **Horario programado** — hasta 3 bloques, con máscara de días y objetivo propio.
+   Si el fin es anterior al inicio, el bloque cruza medianoche y los días marcados
+   son los del arranque.
+3. **Sin nada activo** — si el control había encendido el equipo, lo apaga.
+
+Tocar el aire en crudo desde `/` (setpoint, modo, ventilador, encendido) **apaga el
+control autónomo**, para que los dos no se peleen por el setpoint. Se reactiva desde
+`/control`.
+
+### Hora local
+
+Los horarios usan hora de pared, no UTC. La zona se configura en `/config` como
+cadena POSIX TZ (por defecto `CST6`, México central sin horario de verano). Sin
+sincronización NTP los horarios no se evalúan; la petición instantánea sí funciona.
 
 ## Pines
 

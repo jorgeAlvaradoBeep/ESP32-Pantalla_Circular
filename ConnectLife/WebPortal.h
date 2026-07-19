@@ -9,12 +9,14 @@
 #include "AppLogger.h"
 #include "ConnectLifeClient.h"
 #include "Sensor.h"
+#include "TempControl.h"
 
 class WebPortal {
 public:
   WebPortal(AppConfig &config,
             ConnectLifeClient &connectLife,
             Sensor &sensor,
+            TempControl &tempControl,
             AppLogger &logger);
 
   void begin();
@@ -25,11 +27,15 @@ private:
   AppConfig &config;
   ConnectLifeClient &connectLife;
   Sensor &sensor;
+  TempControl &tempControl;
   AppLogger &logger;
 
   void registerRoutes();
   void sendIndex();
   void sendConfig();
+  void sendControlPage();
+  void sendControlState();
+  void saveControl();
   void redirectToConfig();
   void sendState();
   void saveConfig();

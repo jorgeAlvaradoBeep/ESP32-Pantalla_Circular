@@ -13,6 +13,34 @@ static const uint32_t WIFI_RECONNECT_INTERVAL_MS = 15000;
 static const uint32_t SENSOR_READ_INTERVAL_MS = 5000;
 static const uint32_t CONNECTLIFE_POLL_INTERVAL_MS = 15000;
 
+// --- Control autónomo de temperatura ---
+// Zona horaria POSIX por defecto (México central, sin horario de verano desde 2022).
+static const char DEFAULT_TZ[] = "CST6";
+
+// Rango que el usuario puede pedir. Deliberadamente estrecho: son las
+// temperaturas de confort realmente alcanzables en una habitación.
+static const float CONTROL_USER_MIN_C = 18.0f;
+static const float CONTROL_USER_MAX_C = 25.0f;
+
+// Rango que acepta el equipo para su propio setpoint. El lazo manda aquí un
+// setpoint "virtual" sesgado, que no coincide con lo que pidió el usuario.
+static const int CONTROL_AC_MIN_SETPOINT_C = 16;
+static const int CONTROL_AC_MAX_SETPOINT_C = 30;
+
+static const uint32_t CONTROL_TICK_INTERVAL_MS = 60000;    // evalúa el lazo cada minuto
+static const uint32_t CONTROL_MIN_COMMAND_INTERVAL_MS = 600000;  // 10 min entre escrituras al aire
+static const uint8_t CONTROL_FILTER_WINDOW = 12;           // 12 muestras x 5 s = media de 60 s
+
+// Ganancias del PI. La salida es un sesgo en grados sobre el objetivo del usuario.
+static const float CONTROL_KP = 1.5f;
+static const float CONTROL_KI = 0.05f;      // por minuto
+static const float CONTROL_MAX_BIAS_C = 5.0f;
+
+// Banda muerta amplia a propósito: el DHT11 tiene +-2 C de exactitud y 1 C de
+// resolución, así que por debajo de esto el "error" es ruido del sensor.
+// Con un SHT31/SHT40 este valor puede bajar a ~0.3 C.
+static const float CONTROL_DEADBAND_C = 0.8f;
+
 static const int8_t DISPLAY_PIN_SCLK = 12;
 static const int8_t DISPLAY_PIN_MOSI = 11;
 static const int8_t DISPLAY_PIN_DC = 8;
