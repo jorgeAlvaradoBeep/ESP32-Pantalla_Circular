@@ -57,6 +57,28 @@ hasta que el cuarto llega de verdad a la temperatura pedida.
 - **Mínimo 10 min entre escrituras** al equipo, para proteger el compresor de
   ciclos cortos y no saturar la nube. No aplica al primer comando de un bloque.
 
+### Modulación del ventilador
+
+En modo frío el equipo solo puede **quitar** calor, nunca añadirlo: si se pasa de
+frío por debajo del objetivo, la única forma de "subir" es dejar de enfriar y
+esperar a que el cuarto se caliente solo, que es lento. Para evitar llegar a ese
+punto, el firmware modula la velocidad del ventilador según la **demanda** (los
+grados que faltan en la dirección en que el equipo puede actuar):
+
+| Demanda | Ventilador |
+|---|---|
+| ≥ 2.5 °C | Alta (acercarse rápido) |
+| ≥ 1.2 °C | Media |
+| < 1.2 °C | Baja (frenar para no rebasar) |
+
+Umbrales en `Config.h` (`CONTROL_FAN_HIGH_C`, `CONTROL_FAN_MED_C`). La demanda se
+calcula según el modo: en frío = `ambiente − objetivo`, en calor = `objetivo −
+ambiente`, en auto = `|error|`. El ventilador se reevalúa en cada ciclo aunque el
+setpoint no cambie —así sigue bajando al acercarse— con su propio límite de 3 min
+entre cambios (`CONTROL_FAN_MIN_INTERVAL_MS`; el ventilador no cicla el compresor,
+por eso es más corto que el del setpoint). Se puede apagar desde `/control`; con
+el ventilador automático apagado, la velocidad queda como la deje el usuario.
+
 ### Prioridades
 
 1. **Petición instantánea** (`Aplicar ahora`) — pisa cualquier horario. Se cancela

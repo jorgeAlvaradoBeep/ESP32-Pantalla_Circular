@@ -28,6 +28,9 @@ struct ControlStatus {
   int commandedSetpointC = 0; // setpoint virtual enviado al equipo
   bool hasCommanded = false;
   unsigned long lastCommandMs = 0;
+  float demandC = NAN;        // grados que faltan en la dirección útil
+  String commandedFan;        // "high"/"medium"/"low", vacío si no se ha mandado
+  bool fanControlEnabled = true;
   bool timeSynced = false;
   String note;
 };
@@ -56,6 +59,7 @@ public:
   void setAutoEnabled(bool enabled);
   void setInstant(bool active, float targetC);
   void setMode(ControlMode mode);
+  void setFanControlEnabled(bool enabled);
   bool setSchedule(uint8_t index, const Schedule &schedule);
 
   // Llamado cuando el usuario toca el aire en crudo desde la página de
@@ -82,6 +86,8 @@ private:
   float integral = 0.0f;
   unsigned long lastTickMs = 0;
   unsigned long lastEvalMs = 0;
+  unsigned long lastFanCommandMs = 0;
+  String commandedFan;          // último ventilador enviado ("" = ninguno aún)
   bool engagedAc = false;       // ¿encendimos el aire nosotros?
   bool scheduleWasActive = false;
   float lastTargetC = NAN;
@@ -94,5 +100,7 @@ private:
   void engage(float targetC, bool forceSetup);
   void disengage();
   void resetLoopState();
+  void updateFan(float error, unsigned long nowMs);
+  const char *desiredFan(float demandC) const;
   const char *modeName(ControlMode mode) const;
 };

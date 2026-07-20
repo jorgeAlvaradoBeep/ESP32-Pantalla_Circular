@@ -106,6 +106,7 @@ static const char CONTROL_HTML[] PROGMEM = R"HTML(
       <div class="metric"><span>Ambiente (sensor del aire)</span><b id="acAmbient">--</b></div>
       <div class="metric"><span>Error / corrección</span><b id="errbias">--</b></div>
       <div class="metric"><span>Setpoint enviado al aire</span><b id="setpoint">--</b></div>
+      <div class="metric"><span>Ventilador (demanda)</span><b id="fan">--</b></div>
       <div class="metric"><span>Detalle</span><b id="note">--</b></div>
       <p class="tiny" id="timeWarn"></p>
       <div class="row" style="margin-top:14px">
@@ -128,6 +129,9 @@ static const char CONTROL_HTML[] PROGMEM = R"HTML(
     <section class="panel">
       <h2>Modo del equipo</h2>
       <div class="row"><button id="m0" onclick="setMode(0)">Frío</button><button id="m1" onclick="setMode(1)">Calor</button><button id="m2" onclick="setMode(2)">Auto</button></div>
+      <h3 style="margin-top:16px">Ventilador automático</h3>
+      <p class="tiny">Acelera el ventilador cuando falta mucho y lo frena al acercarse al objetivo, para enfriar rápido sin pasarse (en frío el equipo no puede volver a subir la temperatura).</p>
+      <div class="row"><button id="fanCtl" onclick="toggleFan()">--</button></div>
     </section>
 
     <section class="panel">
@@ -177,6 +181,8 @@ static const char CONTROL_HTML[] PROGMEM = R"HTML(
     async function post(data){const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();if(!j.ok)alert(j.message||'Error');dirty=false;await refresh()}
     function setAuto(on){post({autoEnabled:on})}
     function setMode(m){post({mode:m})}
+    function toggleFan(){post({fanControlEnabled:!state.config.fanControlEnabled})}
+    const FAN={high:'Alta',medium:'Media',low:'Baja',auto:'Auto'};
     function applyInstant(on){post({instantActive:on,instantTargetC:Number($('inst').value)})}
     function saveScheds(){post({schedules:collect()})}
 
@@ -189,6 +195,11 @@ static const char CONTROL_HTML[] PROGMEM = R"HTML(
       $('acAmbient').innerText=s.ac.hasAmbient?s.ac.ambientTemperature.toFixed(1)+' °C':'no reportada';
       $('errbias').innerText=s.status.errorC==null?'--':s.status.errorC.toFixed(2)+' °C / '+s.status.biasC.toFixed(2)+' °C';
       $('setpoint').innerText=s.status.hasCommanded?s.status.commandedSetpointC+' °C':'--';
+      const fanTxt=s.status.commandedFan?(FAN[s.status.commandedFan]||s.status.commandedFan):'--';
+      const demTxt=s.status.demandC==null?'':' (demanda '+s.status.demandC.toFixed(1)+' °C)';
+      $('fan').innerText=s.config.fanControlEnabled?fanTxt+demTxt:'manual';
+      $('fanCtl').innerText=s.config.fanControlEnabled?'Automático: activo':'Automático: apagado';
+      $('fanCtl').classList.toggle('on',s.config.fanControlEnabled);
       $('note').innerText=s.status.note||'--';
       $('timeWarn').innerText=s.status.timeSynced?'':'Sin hora sincronizada (NTP): los horarios no se evaluarán.';
       $('timeWarn').className=s.status.timeSynced?'tiny':'tiny warn';
@@ -352,6 +363,8 @@ void WebPortal::sendControlState()
   doc["status"]["biasC"] = status.biasC;
   doc["status"]["commandedSetpointC"] = status.commandedSetpointC;
   doc["status"]["hasCommanded"] = status.hasCommanded;
+  doc["status"]["demandC"] = status.demandC;
+  doc["status"]["commandedFan"] = status.commandedFan;
   doc["status"]["scheduleIndex"] = status.scheduleIndex;
   doc["status"]["timeSynced"] = status.timeSynced;
   doc["status"]["note"] = status.note;
@@ -362,6 +375,7 @@ void WebPortal::sendControlState()
 
   doc["config"]["autoEnabled"] = cfg.autoEnabled;
   doc["config"]["mode"] = static_cast<int>(cfg.mode);
+  doc["config"]["fanControlEnabled"] = cfg.fanControlEnabled;
   doc["config"]["instantActive"] = cfg.instantActive;
   doc["config"]["instantTargetC"] = cfg.instantTargetC;
   doc["limits"]["minC"] = CONTROL_USER_MIN_C;
@@ -395,6 +409,10 @@ void WebPortal::saveControl()
       return;
     }
     tempControl.setMode(static_cast<ControlMode>(mode));
+  }
+
+  if (doc.containsKey("fanControlEnabled")) {
+    tempControl.setFanControlEnabled(doc["fanControlEnabled"] | true);
   }
 
   if (doc.containsKey("schedules")) {

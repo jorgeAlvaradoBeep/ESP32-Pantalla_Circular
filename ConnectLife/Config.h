@@ -41,6 +41,18 @@ static const float CONTROL_MAX_BIAS_C = 5.0f;
 // Con un SHT31/SHT40 este valor puede bajar a ~0.3 C.
 static const float CONTROL_DEADBAND_C = 0.8f;
 
+// Modulación del ventilador según cuánto falta para el objetivo. Lejos = fuerte
+// para acercarse rápido; cerca = suave para no pasarse. En modo frío el equipo
+// no puede subir la temperatura, así que evitar el sobreimpulso es lo que más
+// importa: por eso frenamos el ventilador al acercarnos.
+// "demanda" = grados que faltan en la dirección en que el equipo puede actuar.
+static const float CONTROL_FAN_HIGH_C = 2.5f;   // demanda >= esto -> ventilador alto
+static const float CONTROL_FAN_MED_C = 1.2f;    // demanda >= esto -> ventilador medio
+                                                // por debajo -> ventilador bajo
+// El ventilador no cicla el compresor, así que puede cambiar más seguido que el
+// setpoint; aún así lo limitamos para no saturar la nube.
+static const uint32_t CONTROL_FAN_MIN_INTERVAL_MS = 180000;  // 3 min entre cambios de ventilador
+
 static const int8_t DISPLAY_PIN_SCLK = 12;
 static const int8_t DISPLAY_PIN_MOSI = 11;
 static const int8_t DISPLAY_PIN_DC = 8;

@@ -23,6 +23,7 @@ void TempControl::begin()
 {
   const ControlConfig &cfg = configStore.getControl();
   status.autoEnabled = cfg.autoEnabled;
+  status.fanControlEnabled = cfg.fanControlEnabled;
   status.source = cfg.autoEnabled ? ControlSource::Idle : ControlSource::Disabled;
   status.note = cfg.autoEnabled ? "Control autónomo activo" : "Control autónomo apagado";
   logger.info(String("Temp control ") + (cfg.autoEnabled ? "enabled" : "disabled") +
@@ -167,6 +168,60 @@ void TempControl::resetLoopState()
   status.biasC = 0.0f;
   status.hasCommanded = false;
   status.commandedSetpointC = 0;
+  status.demandC = NAN;
+  // No borramos commandedFan: al re-enganchar en el mismo bloque no hace falta
+  // reenviar el ventilador si sigue siendo el mismo. Se limpia al desengancharse.
+}
+
+// Devuelve el ventilador para la "demanda": grados que faltan en la dirección en
+// que el equipo puede actuar (positivo = falta enfriar/calentar). Lejos, fuerte;
+// cerca o pasado, suave, para no rebasar el objetivo.
+const char *TempControl::desiredFan(float demandC) const
+{
+  if (demandC >= CONTROL_FAN_HIGH_C) return "high";
+  if (demandC >= CONTROL_FAN_MED_C) return "medium";
+  return "low";
+}
+
+void TempControl::updateFan(float error, unsigned long nowMs)
+{
+  if (!status.fanControlEnabled) {
+    return;
+  }
+  const ControlConfig &cfg = configStore.getControl();
+
+  // Demanda según el modo. En frío hace falta actuar cuando sobra calor
+  // (filtered > target, error < 0); en calor, al revés. En auto no sabemos el
+  // sentido, así que usamos la magnitud del error.
+  float demand;
+  switch (cfg.mode) {
+    case ControlMode::Cool: demand = -error; break;
+    case ControlMode::Heat: demand = error; break;
+    case ControlMode::Auto:
+    default: demand = fabsf(error); break;
+  }
+  status.demandC = demand;
+
+  const String target = desiredFan(demand);
+  status.commandedFan = commandedFan;
+  if (target == commandedFan) {
+    return;   // ya está en esa velocidad
+  }
+
+  const bool rateLimited = lastFanCommandMs != 0 &&
+                           nowMs - lastFanCommandMs < CONTROL_FAN_MIN_INTERVAL_MS;
+  if (rateLimited && commandedFan.length() > 0) {
+    return;   // espera antes de volver a cambiar; el primer envío no espera
+  }
+
+  if (connectLife.setFanSpeed(target)) {
+    commandedFan = target;
+    status.commandedFan = target;
+    lastFanCommandMs = nowMs;
+    logger.info("Control -> ventilador " + target + " (demanda " + String(demand, 1) + " C)");
+  } else {
+    logger.warn("Control could not set fan speed " + target);
+  }
 }
 
 void TempControl::engage(float targetC, bool forceSetup)
@@ -194,6 +249,8 @@ void TempControl::disengage()
   }
   engagedAc = false;
   resetLoopState();
+  commandedFan = "";
+  status.commandedFan = "";
   lastTargetC = NAN;
 }
 
@@ -260,6 +317,11 @@ void TempControl::evaluate(unsigned long nowMs)
   const float error = target - filtered;
   status.errorC = error;
 
+  // El ventilador se ajusta en cada evaluación, independientemente de si el
+  // setpoint cambia: al acercarnos al objetivo el setpoint puede quedar estable
+  // pero queremos seguir bajando la velocidad para no rebasar.
+  updateFan(error, nowMs);
+
   // Fuera de la banda muerta integramos; dentro congelamos el integrador para
   // no acumular ruido del sensor cuando ya estamos en objetivo.
   if (fabsf(error) > CONTROL_DEADBAND_C) {
@@ -317,6 +379,9 @@ void TempControl::setAutoEnabled(bool enabled)
   configStore.saveControl(cfg);
   status.autoEnabled = enabled;
 
+  commandedFan = "";
+  status.commandedFan = "";
+  lastFanCommandMs = 0;
   if (!enabled) {
     // Apagar el control no apaga el aire: lo deja como esté para que el usuario
     // tome el mando.
@@ -364,7 +429,29 @@ void TempControl::setMode(ControlMode mode)
   cfg.mode = mode;
   configStore.saveControl(cfg);
   lastTargetC = NAN;   // fuerza re-configurar el equipo en la próxima evaluación
+  // El sentido de la demanda depende del modo; obliga a recalcular el ventilador.
+  commandedFan = "";
+  status.commandedFan = "";
+  lastFanCommandMs = 0;
   logger.info(String("Control mode set to ") + modeName(mode));
+}
+
+void TempControl::setFanControlEnabled(bool enabled)
+{
+  ControlConfig cfg = configStore.getControl();
+  if (cfg.fanControlEnabled == enabled) {
+    return;
+  }
+  cfg.fanControlEnabled = enabled;
+  configStore.saveControl(cfg);
+  status.fanControlEnabled = enabled;
+  if (enabled) {
+    // Al reactivar, recalcula desde cero en la próxima evaluación.
+    commandedFan = "";
+    status.commandedFan = "";
+    lastFanCommandMs = 0;
+  }
+  logger.info(String("Fan control ") + (enabled ? "enabled" : "disabled"));
 }
 
 bool TempControl::setSchedule(uint8_t index, const Schedule &schedule)

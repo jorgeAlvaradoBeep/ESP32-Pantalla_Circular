@@ -3,7 +3,9 @@
 
 // El bloque de control se guarda como blob binario con un byte de versión al
 // frente, para poder migrarlo sin borrar la configuración del usuario.
-static const uint8_t CONTROL_BLOB_VERSION = 1;
+// v2: añadido ControlConfig::fanControlEnabled. Al cambiar el tamaño del struct,
+// un blob v1 ya no coincide y loadControl() cae a valores por defecto.
+static const uint8_t CONTROL_BLOB_VERSION = 2;
 static const char CONTROL_BLOB_KEY[] = "ctrl_blob";
 
 struct ControlBlob {

@@ -30,6 +30,9 @@ struct ControlConfig {
   bool autoEnabled = false;
   ControlMode mode = ControlMode::Cool;
 
+  // Modula la velocidad del ventilador según lo que falte para el objetivo.
+  bool fanControlEnabled = true;
+
   // Petición instantánea del usuario: pisa cualquier horario mientras esté activa.
   bool instantActive = false;
   float instantTargetC = 22.0f;
